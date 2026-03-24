@@ -910,14 +910,15 @@ object D2BridgeConfigNewProject: TD2BridgeConfigNewProject
               Font.Height = -12
               Font.Name = 'Segoe UI'
               Font.Style = []
+              ItemIndex = 0
               ParentCtl3D = False
               ParentFont = False
               TabOrder = 2
+              Text = 'Server Console (Recommended)'
               Items.Strings = (
                 'Server Console (Recommended)'
                 'Server Compact'
-                'Server Complete'
-                'Windows Service')
+                'Server Complete')
             end
             object Edit_Server_Port: TEdit
               Left = 109
