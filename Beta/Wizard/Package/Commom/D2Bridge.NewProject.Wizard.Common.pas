@@ -155,7 +155,7 @@ var
   sRESTAPIServerUnitAuthFile, sRESTAPIServerUnitPingFile: string;
   sRESTAPIServerUnitAuthClassFile, sRESTAPIServerUnitPingClassFile: string;
   sRESTAPIServerSessionFile: string;
-
+  G: TGUID;
 begin
   try
    WizardForm.ShowModal;
@@ -750,11 +750,8 @@ begin
         sFileContent:= StringReplace(sFileContent, '{FixD2BridgeLazCompile}', 'sh FixD2BridgeLazCompile.sh', [rfIgnoreCase, rfReplaceAll]);
       {$ENDIF}
 
-      {$IFDEF DELPHI}
-        var G: TGUID;
-          CreateGUID(G);
+        CreateGUID(G);
         sFileContent:= StringReplace(sFileContent, '{ProjectGUID}', GUIDToString(G), [rfIgnoreCase, rfReplaceAll]);
-      {$ENDIF}
 
 {$IFDEF FPC}
       if WizardForm.ComboBox_Server_Type.Text = 'Server Console (Recommended)' then
