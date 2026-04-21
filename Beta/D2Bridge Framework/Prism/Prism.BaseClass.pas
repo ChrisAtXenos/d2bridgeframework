@@ -929,6 +929,9 @@ begin
  if not Assigned(FPrismResourceMonitor) then
   Exit;
 
+ if not FPrismResourceMonitor.Enabled then
+  Exit;
+
  try
   vSessionCount:= 0;
   if Assigned(FSessions) then
