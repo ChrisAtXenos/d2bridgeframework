@@ -47,15 +47,12 @@ type
   private
     FCriticalSection: TCriticalSection;
     FFileName: string;
-<<<<<<< HEAD
     FIsDaily: Boolean;
     FLogDir: string;
     FCurrentLogDate: TDate;
     procedure EnsureDailyFile;
-=======
     procedure AppendText(const AMessage: string);
     procedure WriteLineSafe(const AMessage: string);
->>>>>>> 22b2070468301f69d8179d0f848d3cfb7d8ecf4e
   public
     constructor Create(const FileName: string; const AAppendIfExists: Boolean = False);
     destructor Destroy; override;
@@ -101,16 +98,13 @@ end;
 constructor TPrismLog.Create(const FileName: string; const AAppendIfExists: Boolean = False);
 begin
  FFileName:= FileName;
-<<<<<<< HEAD
  FIsDaily := AAppendIfExists;
  FLogDir := IncludeTrailingPathDelimiter(ExtractFileDir(FileName));
  FCurrentLogDate := Trunc(Now);
-=======
  FCriticalSection := TCriticalSection.Create;
 
  if (ExtractFileDir(FileName) <> '') and (not DirectoryExists(ExtractFileDir(FileName))) then
   ForceDirectories(ExtractFileDir(FileName));
->>>>>>> 22b2070468301f69d8179d0f848d3cfb7d8ecf4e
 
  if DirectoryExists(ExtractFileDir(FileName)) then
  begin
