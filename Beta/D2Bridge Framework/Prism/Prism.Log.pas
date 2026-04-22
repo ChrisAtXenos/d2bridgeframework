@@ -45,13 +45,19 @@ uses
 type
  TPrismLog = class
   private
-    FLogFile: TextFile;
     FCriticalSection: TCriticalSection;
     FFileName: string;
+    FIsDaily: Boolean;
+    FLogDir: string;
+    FCurrentLogDate: TDate;
+    procedure EnsureDailyFile;
+    procedure AppendText(const AMessage: string);
+    procedure WriteLineSafe(const AMessage: string);
   public
     constructor Create(const FileName: string; const AAppendIfExists: Boolean = False);
     destructor Destroy; override;
     procedure Log(const SessionIdenty, ErrorForm, ErrorObject, ErrorEvent, ErrorMsg: string);
+    procedure LogDiagnostic(const ACategory, AMessage: string);
     procedure LogSecurity(const AEvent: TSecurityEvent; const AIP, AUserAgent, ADescription: string; const AIsIPV6: boolean);
     procedure LogAccess(const AIP, AUserAgent, ASessionUser, ASessionIdentity, APrismDescription: string);
   end;
@@ -63,62 +69,109 @@ Uses
 
 { TPrismLog }
 
+procedure TPrismLog.EnsureDailyFile;
+var
+  NewDate: TDate;
+begin
+  if not FIsDaily then Exit;
+  NewDate := Trunc(Now);
+  if NewDate = FCurrentLogDate then Exit;
+
+  // Date changed - switch to new daily file (AppendText creates it on first write)
+  FCurrentLogDate := NewDate;
+  FFileName := FLogDir + FormatDateTime('yyyy_mm_dd', NewDate) + '.txt';
+
+  AppendText('D2Bridge Framework');
+  AppendText('');
+  AppendText('LOG Started in ' + DateTimeToStr(Now));
+  AppendText('');
+end;
+
 constructor TPrismLog.Create(const FileName: string; const AAppendIfExists: Boolean = False);
 begin
  FFileName:= FileName;
+ FIsDaily := AAppendIfExists;
+ FLogDir := IncludeTrailingPathDelimiter(ExtractFileDir(FileName));
+ FCurrentLogDate := Trunc(Now);
+ FCriticalSection := TCriticalSection.Create;
+
+ if (ExtractFileDir(FileName) <> '') and (not DirectoryExists(ExtractFileDir(FileName))) then
+  ForceDirectories(ExtractFileDir(FileName));
 
  if DirectoryExists(ExtractFileDir(FileName)) then
  begin
-  AssignFile(FLogFile, FileName);
   if AAppendIfExists and FileExists(FileName) then
   begin
-   Append(FLogFile);
-   FCriticalSection := TCriticalSection.Create;
-
-   WriteLn(FLogFile, '');
-   WriteLn(FLogFile, 'LOG Resumed in '+DateTimeToStr(Now));
+   AppendText('');
+   AppendText('LOG Resumed in '+DateTimeToStr(Now));
    if not D2BridgeServerControllerBase.NeedConsole then
-    WriteLn(FLogFile, 'No seed console');
-   WriteLn(FLogFile, '');
+    AppendText('No seed console');
+   AppendText('');
   end
   else
   begin
-   Rewrite(FLogFile);
-   FCriticalSection := TCriticalSection.Create;
-
-   WriteLn(FLogFile, 'D2Bridge Framework');
-   WriteLn(FLogFile, 'by Talis Jonatas Gomes');
-   WriteLn(FLogFile, 'https://www.d2bridge.com.br');
-   WriteLn(FLogFile, '');
-   WriteLn(FLogFile, 'LOG Started in '+DateTimeToStr(Now));
+   AppendText('D2Bridge Framework');
+   AppendText('by Talis Jonatas Gomes');
+   AppendText('https://www.d2bridge.com.br');
+   AppendText('');
+   AppendText('LOG Started in '+DateTimeToStr(Now));
    if not D2BridgeServerControllerBase.NeedConsole then
-    WriteLn(FLogFile, 'No seed console');
-   WriteLn(FLogFile, '');
+    AppendText('No seed console');
+   AppendText('');
   end;
-
-  Flush(FLogFile);
  end;
 end;
 
 destructor TPrismLog.Destroy;
 begin
-  if FileExists(FFileName) then
-  begin
-   CloseFile(FLogFile);
-   FCriticalSection.Free;
-  end;
+  FreeAndNil(FCriticalSection);
 
   inherited;
+end;
+
+procedure TPrismLog.AppendText(const AMessage: string);
+var
+  vBytes: TBytes;
+  vStream: TFileStream;
+begin
+  if FFileName = '' then
+    Exit;
+
+  if (ExtractFileDir(FFileName) <> '') and (not DirectoryExists(ExtractFileDir(FFileName))) then
+    ForceDirectories(ExtractFileDir(FFileName));
+
+  if FileExists(FFileName) then
+    vStream := TFileStream.Create(FFileName, fmOpenReadWrite or fmShareDenyNone)
+  else
+    vStream := TFileStream.Create(FFileName, fmCreate or fmShareDenyNone);
+
+  try
+    vStream.Seek(0, soEnd);
+    vBytes := TEncoding.Default.GetBytes(AMessage + sLineBreak);
+    if Length(vBytes) > 0 then
+      vStream.WriteBuffer(vBytes[0], Length(vBytes));
+  finally
+    vStream.Free;
+  end;
+end;
+
+procedure TPrismLog.WriteLineSafe(const AMessage: string);
+begin
+  try
+    AppendText(AMessage);
+  except
+  end;
 end;
 
 procedure TPrismLog.Log(const SessionIdenty, ErrorForm, ErrorObject, ErrorEvent, ErrorMsg: string);
 var
  vMsg: string;
 begin
- if FileExists(FFileName) then
+ if FileExists(FFileName) or FIsDaily then
  begin
   FCriticalSection.Enter;
   try
+   EnsureDailyFile;
     vMsg:= DateTimeToStr(Now);
 
     if SessionIdenty <> '' then
@@ -136,26 +189,43 @@ begin
     if ErrorMsg <> '' then
      vMsg:= vMsg + ' | Error = ' + ErrorMsg;
 
-    try
-     WriteLn(FLogFile, vMsg);
-     Flush(FLogFile);
-    except
-
-    end;
+    WriteLineSafe(vMsg);
   finally
     FCriticalSection.Leave;
   end;
  end;
 end;
 
+procedure TPrismLog.LogDiagnostic(const ACategory, AMessage: string);
+var
+  vMsg: string;
+begin
+  if FileExists(FFileName) or FIsDaily then
+  begin
+    FCriticalSection.Enter;
+    try
+      EnsureDailyFile;
+      vMsg := DateTimeToStr(Now) + ' | Diagnostic = ' + ACategory;
+
+      if AMessage <> '' then
+        vMsg := vMsg + ' | ' + AMessage;
+
+      WriteLineSafe(vMsg);
+    finally
+      FCriticalSection.Leave;
+    end;
+  end;
+end;
+
 procedure TPrismLog.LogAccess(const AIP, AUserAgent, ASessionUser, ASessionIdentity, APrismDescription: string);
 var
  vMsg: string;
 begin
- if FileExists(FFileName) then
+ if FileExists(FFileName) or FIsDaily then
  begin
   FCriticalSection.Enter;
   try
+   EnsureDailyFile;
    vMsg:= DateTimeToStr(Now);
 
    vMsg:= vMsg + ' | New Access';
@@ -172,11 +242,7 @@ begin
    if ASessionIdentity <> '' then
     vMsg:= vMsg + ' | Identity = ' + ASessionIdentity;
 
-   try
-    WriteLn(FLogFile, vMsg);
-    Flush(FLogFile);
-   except
-   end;
+  WriteLineSafe(vMsg);
   finally
    FCriticalSection.Leave;
   end;
@@ -188,10 +254,11 @@ procedure TPrismLog.LogSecurity(const AEvent: TSecurityEvent; const AIP, AUserAg
 var
  vMsg: string;
 begin
- if FileExists(FFileName) then
+ if FileExists(FFileName) or FIsDaily then
  begin
   FCriticalSection.Enter;
   try
+   EnsureDailyFile;
    vMsg:= DateTimeToStr(Now);
 
    case AEvent of
@@ -217,11 +284,7 @@ begin
    if ADescription <> '' then
     vMsg:= vMsg + ' | Description = ' + ADescription;
 
-   try
-    WriteLn(FLogFile, vMsg);
-    Flush(FLogFile);
-   except
-   end;
+  WriteLineSafe(vMsg);
   finally
    FCriticalSection.Leave;
   end;
